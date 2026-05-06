@@ -635,13 +635,13 @@ export default function PublicRekapPage() {
                       onClick={() => setExportMode("bulan")}
                       className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${exportMode === "bulan" ? "bg-white text-[#800000] shadow-md" : "text-gray-500 hover:text-gray-700"}`}
                     >
-                      Bulan
+                      Per Bulan
                     </button>
                     <button
                       onClick={() => setExportMode("tahun")}
                       className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${exportMode === "tahun" ? "bg-white text-[#800000] shadow-md" : "text-gray-500 hover:text-gray-700"}`}
                     >
-                      Tahun
+                      Per Tahun
                     </button>
                   </div>
                 </div>
