@@ -54,6 +54,20 @@ const parseIndonesianDate = (tanggal: string): string | null => {
 const toYMD = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 
+// --- Styling helpers untuk input & select ---
+const inputBgStyle = { backgroundColor: "#F9FAFB", borderColor: "#F3F4F6", color: "#4B5563" };
+const selectBgStyle = {
+  ...inputBgStyle,
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+  backgroundPosition: `right 0.8rem center`, backgroundRepeat: `no-repeat`, backgroundSize: `1.2em 1.2em`
+};
+const inputFocus = (e: React.FocusEvent<HTMLElement>) => {
+  e.target.style.borderColor = "#800000"; e.target.style.boxShadow = "0 0 0 3px rgba(128,0,0,0.1)"; e.target.style.backgroundColor = "#fff";
+};
+const inputBlur = (e: React.FocusEvent<HTMLElement>) => {
+  e.target.style.borderColor = "#F3F4F6"; e.target.style.boxShadow = "none"; e.target.style.backgroundColor = "#F9FAFB";
+};
+
 export default function PublicRekapPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
@@ -62,20 +76,27 @@ export default function PublicRekapPage() {
   const [allData, setAllData] = useState<FalloutRecord[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Page Filter State
-  const [stoFilter, setStoFilter] = useState("Semua");
-  const [statusFilter, setStatusFilter] = useState("Semua");
-  const [filterTanggal, setFilterTanggal] = useState("");
-  const [page, setPage] = useState(1);
-  const [latestTanggalYMD, setLatestTanggalYMD] = useState("");
-  
-  // Tab & Modal State
+  // Tab & Detail State
   const [activeTab, setActiveTab] = useState<"tabel" | "grafik">("tabel");
   const [selectedDetail, setSelectedDetail] = useState<FalloutRecord | null>(null);
   const [fullId, setFullId] = useState<string | null>(null);
   const [tahunList, setTahunList] = useState<number[]>([]);
+  const [latestTanggalYMD, setLatestTanggalYMD] = useState("");
 
-  // Export Modal State
+  // ==========================================
+  // PAGE FILTER STATE (UNTUK TABEL & GRAFIK)
+  // ==========================================
+  const [filterPeriode, setFilterPeriode] = useState<"Harian" | "Bulanan" | "Tahunan">("Harian");
+  const [filterTanggal, setFilterTanggal] = useState("");
+  const [filterBulan, setFilterBulan] = useState<number>(new Date().getMonth());
+  const [filterTahun, setFilterTahun] = useState<number>(new Date().getFullYear());
+  const [stoFilter, setStoFilter] = useState("Semua");
+  const [statusFilter, setStatusFilter] = useState("Semua");
+  const [page, setPage] = useState(1);
+
+  // ==========================================
+  // EXPORT MODAL STATE
+  // ==========================================
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportMode, setExportMode] = useState<"bulan" | "tahun">("bulan");
   const [exportMonth, setExportMonth] = useState<number>(new Date().getMonth());
@@ -98,6 +119,11 @@ export default function PublicRekapPage() {
         const latest = ymdList.reduce((a, b) => (a > b ? a : b));
         setLatestTanggalYMD(latest);
         setFilterTanggal(latest);
+        
+        // Ekstrak bulan & tahun dari tanggal terbaru untuk default Bulanan/Tahunan
+        const [ly, lm] = latest.split("-");
+        setFilterBulan(parseInt(lm) - 1);
+        setFilterTahun(parseInt(ly));
       }
 
       const tahuns = [...new Set(data.map((r) => {
@@ -110,15 +136,33 @@ export default function PublicRekapPage() {
     setLoading(false);
   };
 
-  // ── FILTER HALAMAN ─────────────────────────────────────────────
+  // ── LOGIKA FILTER HALAMAN (TABEL & GRAFIK) ─────────────────────
   const filtered = allData.filter((d) => {
-    const matchTanggal = !filterTanggal || parseIndonesianDate(d.tanggal) === filterTanggal;
+    const dateStr = parseIndonesianDate(d.tanggal);
+    let matchTanggal = false;
+
+    if (!dateStr) {
+      matchTanggal = true; // Data tanpa format tanggal diabaikan filter tanggalnya
+    } else {
+      const [y, m] = dateStr.split("-");
+      if (filterPeriode === "Harian") {
+        matchTanggal = !filterTanggal || dateStr === filterTanggal;
+      } else if (filterPeriode === "Bulanan") {
+        matchTanggal = parseInt(y) === filterTahun && parseInt(m) === filterBulan + 1;
+      } else if (filterPeriode === "Tahunan") {
+        matchTanggal = parseInt(y) === filterTahun;
+      }
+    }
+
     const matchSto = stoFilter === "Semua" || d.sto === stoFilter;
     const matchStatus = statusFilter === "Semua" || d.resolved_eskalasi === statusFilter;
     return matchTanggal && matchSto && matchStatus;
   });
 
-  const tanggalRekap = filtered[0]?.tanggal || allData[0]?.tanggal || "-";
+  const tanggalRekap = filterPeriode === "Harian" 
+    ? (filtered[0]?.tanggal || (filterTanggal ? new Date(filterTanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "-"))
+    : filterPeriode === "Bulanan" ? `Bulan ${MONTHS_ID[filterBulan]} ${filterTahun}` : `Tahun ${filterTahun}`;
+
   const picList = [...new Set(filtered.map((r) => r.pic?.trim()).filter(Boolean))].join(", ") || "-";
   const resolved = filtered.filter((r) => r.resolved_eskalasi === "RESOLVED").length;
   const eskalasi = filtered.filter((r) => r.resolved_eskalasi === "ESKALASI").length;
@@ -152,12 +196,8 @@ export default function PublicRekapPage() {
     const dateStr = parseIndonesianDate(d.tanggal);
     if (!dateStr) return false;
     const [y, m] = dateStr.split("-");
-    
-    if (exportMode === "bulan") {
-      return parseInt(y) === exportYear && parseInt(m) === exportMonth + 1;
-    } else {
-      return parseInt(y) === exportYear;
-    }
+    if (exportMode === "bulan") return parseInt(y) === exportYear && parseInt(m) === exportMonth + 1;
+    return parseInt(y) === exportYear;
   });
 
   const exportPeriodLabel = exportMode === "bulan" ? `${MONTHS_ID[exportMonth]} ${exportYear}` : `Tahun ${exportYear}`;
@@ -183,22 +223,12 @@ export default function PublicRekapPage() {
     const now = new Date();
     const exportTimestamp = now.toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric" });
 
-    doc.setFillColor(54, 0, 0);
-    doc.rect(0, 0, 297, 40, "F");
-    doc.setTextColor(255, 255, 255);
-    
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
+    doc.setFillColor(54, 0, 0); doc.rect(0, 0, 297, 40, "F");
+    doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.setFont("helvetica", "bold");
     doc.text("PT Telekomunikasi Indonesia", 148, 12, { align: "center" });
-    
-    doc.setFontSize(12);
-    doc.text("REKAP DATA FALLOUT SISTEM", 148, 20, { align: "center" });
-    
-    doc.setFontSize(10);
-    doc.text("Wilayah STO Jakarta Selatan", 148, 27, { align: "center" });
-
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12); doc.text("REKAP DATA FALLOUT SISTEM", 148, 20, { align: "center" });
+    doc.setFontSize(10); doc.text("Wilayah STO Jakarta Selatan", 148, 27, { align: "center" });
+    doc.setFontSize(8); doc.setFont("helvetica", "normal");
     doc.text(`Periode Data: ${periodLabel}  |  Total: ${dataToExport.length} baris`, 14, 35);
     doc.text(`Dicetak pada: ${exportTimestamp}`, 283, 35, { align: "right" });
 
@@ -209,11 +239,7 @@ export default function PublicRekapPage() {
       styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
       headStyles: { fillColor: [128, 0, 0], textColor: [255, 255, 255], fontStyle: "bold" },
       alternateRowStyles: { fillColor: [250, 250, 250] },
-      columnStyles: {
-        0: { cellWidth: 8 }, 1: { cellWidth: 35 }, 2: { cellWidth: 70 },
-        3: { cellWidth: 15 }, 4: { cellWidth: 25 }, 5: { cellWidth: 25 },
-        6: { cellWidth: 25 }, 7: { cellWidth: 25 },
-      }
+      columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 35 }, 2: { cellWidth: 70 }, 3: { cellWidth: 15 }, 4: { cellWidth: 25 }, 5: { cellWidth: 25 }, 6: { cellWidth: 25 }, 7: { cellWidth: 25 } }
     });
     return doc.output("blob");
   };
@@ -262,6 +288,8 @@ export default function PublicRekapPage() {
       </div>
     );
   }
+
+  const isNotLatest = filterPeriode !== "Harian" || filterTanggal !== latestTanggalYMD;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
@@ -357,7 +385,7 @@ export default function PublicRekapPage() {
           {/* Tabel Tab */}
           {activeTab === "tabel" && (
             <>
-              {/* Filter Bar Baru */}
+              {/* Filter Bar */}
               <div className="bg-white rounded-3xl shadow-sm border border-gray-50 p-5 mb-5 relative overflow-hidden">
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-3">
@@ -365,8 +393,15 @@ export default function PublicRekapPage() {
                     <Filter size={18} className="text-gray-700" />
                     <h3 className="font-extrabold text-gray-800 text-base tracking-wide">Filter Tabel</h3>
                   </div>
-                  {filterTanggal !== latestTanggalYMD && latestTanggalYMD && (
-                    <button onClick={() => {setFilterTanggal(latestTanggalYMD); setPage(1);}}
+                  {isNotLatest && latestTanggalYMD && (
+                    <button onClick={() => {
+                        setFilterPeriode("Harian"); 
+                        setFilterTanggal(latestTanggalYMD);
+                        const [ly, lm] = latestTanggalYMD.split("-");
+                        setFilterBulan(parseInt(lm) - 1);
+                        setFilterTahun(parseInt(ly));
+                        setPage(1);
+                      }}
                       className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-80"
                       style={{backgroundColor:"#FFF0F0",color:"#800000"}}>
                       Kembali ke data terbaru
@@ -376,31 +411,70 @@ export default function PublicRekapPage() {
 
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center gap-3">
-                    <input 
-                      type="date" 
-                      value={filterTanggal}
-                      onChange={(e) => { setFilterTanggal(e.target.value); setPage(1); }}
-                      className="pl-4 pr-3 py-2.5 rounded-2xl border text-sm font-semibold outline-none transition-all"
-                      style={{ backgroundColor: "#F9FAFB", borderColor: "#F3F4F6", color: "#4B5563" }}
-                      onFocus={(e) => { e.target.style.borderColor = "#800000"; e.target.style.boxShadow = "0 0 0 3px rgba(128,0,0,0.1)"; e.target.style.backgroundColor = "#fff"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#F3F4F6"; e.target.style.boxShadow = "none"; e.target.style.backgroundColor = "#F9FAFB"; }}
-                    />
+                    
+                    {/* Kolom 1: Dropdown Tipe Periode */}
+                    <select 
+                      value={filterPeriode} 
+                      onChange={(e) => { setFilterPeriode(e.target.value as any); setPage(1); }}
+                      className="px-4 py-2.5 rounded-2xl border text-sm font-semibold outline-none appearance-none pr-10 cursor-pointer transition-all"
+                      style={selectBgStyle} onFocus={inputFocus} onBlur={inputBlur}
+                    >
+                      <option value="Harian">Periode Harian</option>
+                      <option value="Bulanan">Periode Bulanan</option>
+                      <option value="Tahunan">Periode Tahunan</option>
+                    </select>
+
+                    {/* Kolom 2: Input Dinamis (Tergantung Periode) */}
+                    {filterPeriode === "Harian" && (
+                      <input 
+                        type="date" value={filterTanggal}
+                        onChange={(e) => { setFilterTanggal(e.target.value); setPage(1); }}
+                        className="pl-4 pr-3 py-2.5 rounded-2xl border text-sm font-semibold outline-none transition-all"
+                        style={inputBgStyle} onFocus={inputFocus} onBlur={inputBlur}
+                      />
+                    )}
+
+                    {filterPeriode === "Bulanan" && (
+                      <div className="flex items-center gap-2">
+                        <select 
+                          value={filterBulan} onChange={(e) => { setFilterBulan(Number(e.target.value)); setPage(1); }}
+                          className="px-4 py-2.5 rounded-2xl border text-sm font-semibold outline-none appearance-none pr-10 cursor-pointer transition-all"
+                          style={selectBgStyle} onFocus={inputFocus} onBlur={inputBlur}
+                        >
+                          {MONTHS_ID.map((m, i) => <option key={m} value={i}>{m}</option>)}
+                        </select>
+                        <select 
+                          value={filterTahun} onChange={(e) => { setFilterTahun(Number(e.target.value)); setPage(1); }}
+                          className="px-4 py-2.5 rounded-2xl border text-sm font-semibold outline-none appearance-none pr-10 cursor-pointer transition-all"
+                          style={selectBgStyle} onFocus={inputFocus} onBlur={inputBlur}
+                        >
+                          {tahunList.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {filterPeriode === "Tahunan" && (
+                      <select 
+                        value={filterTahun} onChange={(e) => { setFilterTahun(Number(e.target.value)); setPage(1); }}
+                        className="px-4 py-2.5 rounded-2xl border text-sm font-semibold outline-none appearance-none pr-10 cursor-pointer transition-all"
+                        style={selectBgStyle} onFocus={inputFocus} onBlur={inputBlur}
+                      >
+                        {tahunList.map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    )}
+
+                    {/* Kolom 3: STO Dropdown */}
                     <select 
                       value={stoFilter} 
                       onChange={(e) => { setStoFilter(e.target.value); setPage(1); }}
                       className="px-4 py-2.5 rounded-2xl border text-sm font-semibold outline-none appearance-none pr-10 cursor-pointer transition-all"
-                      style={{ 
-                        backgroundColor: "#F9FAFB", borderColor: "#F3F4F6", color: "#4B5563",
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236B7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-                        backgroundPosition: `right 0.8rem center`, backgroundRepeat: `no-repeat`, backgroundSize: `1.2em 1.2em`
-                      }}
-                      onFocus={(e) => { e.target.style.borderColor = "#800000"; e.target.style.boxShadow = "0 0 0 3px rgba(128,0,0,0.1)"; e.target.style.backgroundColor = "#fff"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#F3F4F6"; e.target.style.boxShadow = "none"; e.target.style.backgroundColor = "#F9FAFB"; }}
+                      style={selectBgStyle} onFocus={inputFocus} onBlur={inputBlur}
                     >
                       <option value="Semua">Semua STO</option>
                       {stoList.filter(s => s !== "Semua").map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
+
                   <div className="flex items-center gap-3 pt-1">
                     <span className="text-sm font-bold text-gray-400">Status:</span>
                     <div className="flex flex-wrap gap-2">
@@ -635,13 +709,13 @@ export default function PublicRekapPage() {
                       onClick={() => setExportMode("bulan")}
                       className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${exportMode === "bulan" ? "bg-white text-[#800000] shadow-md" : "text-gray-500 hover:text-gray-700"}`}
                     >
-                      Per Bulan
+                      Bulan & Tahun
                     </button>
                     <button
                       onClick={() => setExportMode("tahun")}
                       className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${exportMode === "tahun" ? "bg-white text-[#800000] shadow-md" : "text-gray-500 hover:text-gray-700"}`}
                     >
-                      Per Tahun
+                      Tahun Saja
                     </button>
                   </div>
                 </div>
@@ -654,9 +728,7 @@ export default function PublicRekapPage() {
                         value={exportMonth} 
                         onChange={(e) => setExportMonth(Number(e.target.value))}
                         className="w-full px-4 py-3 rounded-xl border text-sm font-semibold outline-none transition-all cursor-pointer"
-                        style={{ backgroundColor: "#F9FAFB", borderColor: "#E5E7EB", color: "#374151" }}
-                        onFocus={(e) => { e.target.style.borderColor = "#800000"; e.target.style.boxShadow = "0 0 0 3px rgba(128,0,0,0.1)"; e.target.style.backgroundColor = "#fff"; }}
-                        onBlur={(e) => { e.target.style.borderColor = "#E5E7EB"; e.target.style.boxShadow = "none"; e.target.style.backgroundColor = "#F9FAFB"; }}
+                        style={selectBgStyle} onFocus={inputFocus} onBlur={inputBlur}
                       >
                         {MONTHS_ID.map((m, i) => <option key={m} value={i}>{m}</option>)}
                       </select>
@@ -669,9 +741,7 @@ export default function PublicRekapPage() {
                       value={exportYear} 
                       onChange={(e) => setExportYear(Number(e.target.value))}
                       className="w-full px-4 py-3 rounded-xl border text-sm font-semibold outline-none transition-all cursor-pointer"
-                      style={{ backgroundColor: "#F9FAFB", borderColor: "#E5E7EB", color: "#374151" }}
-                      onFocus={(e) => { e.target.style.borderColor = "#800000"; e.target.style.boxShadow = "0 0 0 3px rgba(128,0,0,0.1)"; e.target.style.backgroundColor = "#fff"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#E5E7EB"; e.target.style.boxShadow = "none"; e.target.style.backgroundColor = "#F9FAFB"; }}
+                      style={selectBgStyle} onFocus={inputFocus} onBlur={inputBlur}
                     >
                       {tahunList.map(y => <option key={y} value={y}>{y}</option>)}
                     </select>
